@@ -19,7 +19,7 @@ const reportSchema = new mongoose.Schema({
                 type: String,
                 required: true,
             },
-            emotions: {
+            emotions: [{
                 angry: {
                     type: Number,
                     required: true
@@ -48,18 +48,14 @@ const reportSchema = new mongoose.Schema({
                     type: Number,
                     required: true
                 },
-            },
+            }],
             max_emotion_img: {
                 emotion: {
                     type: String,
                     required: true
-                },
-                score: {
-                    type: Number,
-                    required: true
                 }
             }
-        }],
+}],
 
 },{new:true});
 

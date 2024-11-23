@@ -157,19 +157,106 @@
 # if __name__ == '__main__':
 #     app.run(host='0.0.0.0', port=5000)
 
+# from flask import Flask, request, jsonify
+# import os
+# import cv2
+# from deepface import DeepFace
+# from flask_cors import CORS
+
+# app = Flask(__name__)
+
+# # Enable CORS for the frontend (React app running on localhost:5173)
+# CORS(app)
+
+# # Define the folder where images are stored
+# # BASE_IMAGE_FOLDER = r"Back-end\photos"  # Adjust the path to match your directory structure
+
+# @app.route('/analyze', methods=['POST'])
+# def analyze_session():
+#     """
+#     Analyze images in a specific session folder for emotions using DeepFace.
+#     """
+#     try:
+#         data = request.json
+#         # childname = data.get('childname')
+#         # sessionid = data.get('sessionid')
+#         BASE_IMAGE_FOLDER=data.get('filepath')
+
+#         # Validate input
+#         if not BASE_IMAGE_FOLDER :
+#             return jsonify({"error":"folder does not exist"}), 400
+#         # if not childname or not sessionid:
+#         #     return jsonify({"error": "Child name and session ID are required"}), 400
+
+#         # Construct the session folder path
+#         # session_folder = os.path.join(BASE_IMAGE_FOLDER, childname, sessionid)
+
+#         # Check if the session folder exists
+#         # if not os.path.exists(session_folder):
+#         #     return jsonify({"error": f"Session folder '{session_folder}' does not exist"}), 404
+
+#         # List supported image files in the session folder
+#         supported_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.gif')
+#         image_files = [f for f in BASE_IMAGE_FOLDER if f.lower().endswith(supported_extensions) and not f.lower().startswith("screenshot")]
+
+#         # Return error if no valid images are found
+#         if not image_files:
+#             return jsonify({"error": "No valid images found in the session folder"}), 404
+
+#         results = []
+#         for image_file in image_files:
+#             image_path = os.path.join(BASE_IMAGE_FOLDER, image_file)
+#             img = cv2.imread(image_path)
+
+#             if img is None:
+#                 results.append({"image": image_file, "error": "Unable to load image"})
+#                 continue
+
+#             try:
+#                 # Analyze emotions in the image
+#                 res = DeepFace.analyze(img, actions=['emotion'], detector_backend='opencv')
+#                 if isinstance(res, list):
+#                     res = res[0]
+
+#                 emotions = res['emotion']
+                
+#                 # Convert numpy.float32 values to native Python float
+#                 emotions = {k: float(v) for k, v in emotions.items()}
+                
+#                 max_emotion = max(emotions, key=emotions.get)
+#                 results.append({
+#                     "image": image_file,
+#                     "emotions": emotions,
+#                     "max_emotion": max_emotion
+#                 })
+
+#             except Exception as e:
+#                 results.append({"image": image_file, "error": str(e)})
+
+#         return jsonify(results)
+
+#     except Exception as e:
+#         # Log any unexpected error
+#         print(f"Error in analyze_session: {str(e)}")
+#         return jsonify({"error": "An unexpected error occurred"}), 500
+
+# if __name__ == '__main__':
+#     # Run the Flask server on localhost and port 5000
+#     app.run(debug=True, port=5000)
+
+
+
 from flask import Flask, request, jsonify
 import os
 import cv2
 from deepface import DeepFace
 from flask_cors import CORS
+import requests  # Import the requests library for making HTTP requests
 
 app = Flask(__name__)
-
-# Enable CORS for the frontend (React app running on localhost:5173)
 CORS(app)
 
-# Define the folder where images are stored
-BASE_IMAGE_FOLDER = r"Back-end\photos"  # Adjust the path to match your directory structure
+EXPRESS_SERVER_URL = "http://localhost:3000/me"  # URL of the Express server
 
 @app.route('/analyze', methods=['POST'])
 def analyze_session():
@@ -177,69 +264,85 @@ def analyze_session():
     Analyze images in a specific session folder for emotions using DeepFace.
     """
     try:
+        # Get JSON data from the request
         data = request.json
-        childname = data.get('childname')
-        sessionid = data.get('sessionid')
+        childname=data.get('childname')
+        sessionid=data.get('sessionid')
+        BASE_IMAGE_FOLDER = data.get('filePath')
+
+        print("Received folder path:", BASE_IMAGE_FOLDER)  # Debug log
 
         # Validate input
-        if not childname or not sessionid:
-            return jsonify({"error": "Child name and session ID are required"}), 400
+        if not os.path.exists(BASE_IMAGE_FOLDER):
+            print("Invalid folder path provided.")
+            return jsonify({"error": "Provided folder does not exist"}), 400
 
-        # Construct the session folder path
-        session_folder = os.path.join(BASE_IMAGE_FOLDER, childname, sessionid)
-
-        # Check if the session folder exists
-        if not os.path.exists(session_folder):
-            return jsonify({"error": f"Session folder '{session_folder}' does not exist"}), 404
-
-        # List supported image files in the session folder
+        # List supported image files in the folder
         supported_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.gif')
-        image_files = [f for f in os.listdir(session_folder) if f.lower().endswith(supported_extensions) and not f.lower().startswith("screenshot")]
+        image_files = [
+            f for f in os.listdir(BASE_IMAGE_FOLDER)
+            if f.lower().endswith(supported_extensions) and not f.lower().startswith("screenshot")
+        ]
 
-        # Return error if no valid images are found
+        print("Image files found:", image_files)  # Debug log
+
         if not image_files:
-            return jsonify({"error": "No valid images found in the session folder"}), 404
+            print("No valid images found in the folder.")
+            return jsonify({"error": "No valid images found in the folder"}), 404
 
         results = []
         for image_file in image_files:
-            image_path = os.path.join(session_folder, image_file)
-            img = cv2.imread(image_path)
+            image_path = os.path.join(BASE_IMAGE_FOLDER, image_file)
+            print("Processing image:", image_path)  # Debug log
 
+            img = cv2.imread(image_path)
             if img is None:
+                print(f"Unable to load image: {image_file}")
                 results.append({"image": image_file, "error": "Unable to load image"})
                 continue
 
             try:
-                # Analyze emotions in the image
+                print("Analyzing image with DeepFace:", image_path)  # Debug log
                 res = DeepFace.analyze(img, actions=['emotion'], detector_backend='opencv')
+                print("DeepFace analysis result:", res)  # Debug log
+
                 if isinstance(res, list):
                     res = res[0]
 
                 emotions = res['emotion']
-                
-                # Convert numpy.float32 values to native Python float
                 emotions = {k: float(v) for k, v in emotions.items()}
-                
                 max_emotion = max(emotions, key=emotions.get)
+
                 results.append({
+                    "childname":childname,
+                    "sessionid":sessionid,
                     "image": image_file,
                     "emotions": emotions,
                     "max_emotion": max_emotion
                 })
 
             except Exception as e:
+                print(f"Error analyzing image {image_file}: {str(e)}")
                 results.append({"image": image_file, "error": str(e)})
+
+        print("Final analysis results:", results)  # Debug log
+
+        # Send results to the Express server
+        try:
+            response = requests.post(EXPRESS_SERVER_URL, json={"results": results,"childname": childname,"sessionid": sessionid})
+            if response.status_code == 200:
+                print("Results sent to Express server successfully.")
+            else:
+                print("Failed to send results to Express server:", response.text)
+        except Exception as e:
+            print(f"Error sending results to Express server: {str(e)}")
 
         return jsonify(results)
 
     except Exception as e:
-        # Log any unexpected error
         print(f"Error in analyze_session: {str(e)}")
         return jsonify({"error": "An unexpected error occurred"}), 500
 
+
 if __name__ == '__main__':
-    # Run the Flask server on localhost and port 5000
     app.run(debug=True, port=5000)
-
-
-

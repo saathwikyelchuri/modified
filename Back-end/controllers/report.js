@@ -1,4 +1,5 @@
 const fs=require('fs');
+// const fetch = require('node-fetch');
 const path=require('path');
 const reports=require('../models/report');
 
@@ -92,7 +93,7 @@ async function handleModel(req, res) {
   console.log("Photos Folder Path:", photosFolderPath);
 
   // Check if the photos folder exists
-  fs.readdir(photosFolderPath, (err, files) => {
+  fs.readdir(photosFolderPath, async (err, files) => {
     if (err) {
       // Error if the folder doesn't exist or there's an issue reading it
       console.error("Error reading folder:", err);
@@ -102,15 +103,114 @@ async function handleModel(req, res) {
     // You can process the files here. For example, filter out specific files if needed.
     console.log("Files in photos folder:", files);
 
+    try{
+        const response=await fetch("http://127.0.0.1:5000/analyze",{
+            method:'post',
+            headers:{
+                "Content-Type": "application/json",
+            },
+            body:JSON.stringify({
+                childname:childname,
+                sessionid:sessionid,
+                filePath: photosFolderPath
+            })
+        });
+        if (response.ok){
+            console.log("folder sent successfully to model");
+        }
+        else{
+            console.log("folder  not  went to model");
+        }
+    }catch(e){
+        console.log("error ",e);
+    }
     // Process or analyze the files as needed
     res.status(200).json({ message: "Folder processed successfully.", files });
   });
 }
+
+// let storedResults = [];
+// async function handleMe(req, res) {
+//     const results = req.body.results;
+//     console.log("Received results from Flask backend:", results);
+//     storedResults = results;
+//     res.status(200).json({
+//         message: "Results received successfully.",
+//         results
+//     });
+// }
+
+let storedResults = [];
+
+async function handleMe(req, res) {
+    const results = req.body.results;
+    console.log("Received results from Flask backend:", results);
+
+    // Store the results for future use (if needed)
+    storedResults = results;
+    try {
+        for (const result of storedResults) {
+            const { sessionid, image, emotions, max_emotion } = result;
+    
+            console.log("Querying sessionid:", sessionid, "and imgpath:", image);
+    
+            // Try to find the document
+            const report = await reports.findOne({
+                sessionid: sessionid,
+                "images.imgpath": { $regex: image, $options: "i" }, // Use this if paths match exactly
+            });
+    
+            if (!report) {
+                console.log(`No matching report found for sessionid: ${sessionid} and imgpath: ${image}`);
+                continue;
+            }
+    
+            // Update if a match is found
+            await reports.updateOne(
+                {
+                    sessionid: sessionid,
+                    "images.imgpath": { $regex: image, $options: "i" },
+                },
+                {
+                    $set: {
+                        "images.$.emotions": emotions,
+                        "images.$.max_emotion_img.emotion": max_emotion,
+                    },
+                }
+            );
+    
+            console.log(`Updated emotions for sessionid: ${sessionid}, imgpath: ${image}`);
+        }
+    
+        res.status(200).json({ message: "Emotions updated successfully." });
+    } catch (error) {
+        console.error("Error updating emotions:", error);
+        res.status(500).json({ error: "An error occurred while updating emotions." });
+    }
+    
+}
+
+
+
+
+async function handleGet(req, res){
+    if (storedResults.length === 0) {
+        return res.status(404).json({
+            message: "No results available yet. Please wait for Flask to send data.",
+        });
+    }
+
+    res.status(200).json({
+        results: storedResults,
+    });
+};
 
 
 module.exports={
     handleLoginDetails,
     handleUploading,
     handleReport,
-    handleModel
+    handleModel,
+    handleMe,
+    handleGet
 }
